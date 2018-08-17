@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(MY_DIRNAME, '..'))
 # sys.path.insert(0, os.path.join(MY_DIRNAME, '..', 'evaluate'))
 from nets.model_main import ModelMain
 from nets.yolo_loss import YOLOLoss
-from common.coco_dataset import COCODataset
+# from common.coco_dataset import COCODataset
 from common.bdd_dataset import BDDDataset
 
 
@@ -74,15 +74,18 @@ def train(config):
                                     config["yolo"]["classes"], (config["img_w"], config["img_h"])))
 
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(BDDDataset(config["train_path"]),
+    dataloader = torch.utils.data.DataLoader(BDDDataset(config["train_path"],
+                                                        (config["img_w"], config["img_h"]),
+                                                        is_training=True),
                                              batch_size=config["batch_size"],
-                                             shuffle=True, num_workers=16, pin_memory=False)
+                                             shuffle=True, num_workers=32, pin_memory=True)
 
 
     # Start the training loop
     logging.info("Start training.")
     for epoch in range(config["epochs"]):
-        for step, (images, labels) in enumerate(dataloader):
+        for step, samples in enumerate(dataloader):
+            images, labels = samples["image"], samples["label"]
             start_time = time.time()
             config["global_step"] += 1
 
@@ -90,7 +93,9 @@ def train(config):
             optimizer.zero_grad()
             outputs = net(images)
             losses_name = ["total_loss", "x", "y", "w", "h", "conf", "cls"]
-            losses = [[]] * len(losses_name)
+            losses = []
+            for _ in range(len(losses_name)):
+                losses.append([])
             for i in range(3):
                 _loss_item = yolo_losses[i](outputs[i], labels)
                 for j, l in enumerate(_loss_item):
@@ -231,6 +236,8 @@ def main():
     # Start training
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
     train(config)
+
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
